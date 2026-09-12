@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CATALOG="$ROOT_DIR/config/models.tsv"
+LLAMA_BIN="${LLAMA_BIN:-$HOME/.local/opt/llama.cpp/bin}"
+
+usage() {
+  cat <<'EOF'
+Uso:
+  ./slave models
+  ./slave smoke <perfil>
+  ./slave benchmark <perfil>
+  ./slave serve <perfil>
+
+Variaveis:
+  LLAMA_BIN     diretorio dos binarios llama.cpp
+  SLAVE_HOST    endereco do servidor (padrao: 127.0.0.1)
+  SLAVE_PORT    porta do servidor (padrao: 8080)
+  SLAVE_THREADS threads de CPU (sobrescreve o perfil)
+EOF
+}
+
+model_row() {
+  local id="$1"
+  awk -F '|' -v id="$id" '$1 == id { print; found=1; exit } END { if (!found) exit 1 }' "$CATALOG"
+}
+
+list_models() {
+  awk -F '|' '
+    BEGIN { printf "%-23s %-13s %-8s %s\n", "PERFIL", "STATUS", "CONTEXTO", "FINALIDADE" }
+    !/^#/ && NF { printf "%-23s %-13s %-8s %s\n", $1, $6, $4, $7 }
+  ' "$CATALOG"
+}
+
+require_binary() {
+  if [[ ! -x "$LLAMA_BIN/$1" ]]; then
+    echo "Erro: $LLAMA_BIN/$1 nao encontrado. Rode ./scripts/bootstrap-llama.sh." >&2
+    exit 1
+  fi
+}
+
+load_model() {
+  local row
+  row="$(model_row "$1")" || {
+    echo "Erro: perfil desconhecido: $1" >&2
+    list_models >&2
+    exit 2
+  }
+  IFS='|' read -r MODEL_ID MODEL_REPO MODEL_QUANT MODEL_CONTEXT MODEL_THREADS MODEL_STATUS MODEL_PURPOSE <<< "$row"
+  MODEL_THREADS="${SLAVE_THREADS:-$MODEL_THREADS}"
+}
+
+command="${1:-help}"
+case "$command" in
+  models)
+    list_models
+    ;;
+  smoke|benchmark)
+    [[ $# -eq 2 ]] || { usage >&2; exit 2; }
+    load_model "$2"
+    require_binary llama-cli
+    exec "$ROOT_DIR/scripts/benchmark.sh" "$MODEL_ID" "$MODEL_REPO" "$MODEL_QUANT" "$MODEL_THREADS"
+    ;;
+  serve)
+    [[ $# -eq 2 ]] || { usage >&2; exit 2; }
+    load_model "$2"
+    require_binary llama-server
+    exec "$LLAMA_BIN/llama-server" \
+      -hf "$MODEL_REPO:$MODEL_QUANT" \
+      -c "$MODEL_CONTEXT" \
+      -t "$MODEL_THREADS" \
+      --host "${SLAVE_HOST:-127.0.0.1}" \
+      --port "${SLAVE_PORT:-8080}"
+    ;;
+  help|-h|--help)
+    usage
+    ;;
+  *)
+    echo "Erro: comando desconhecido: $command" >&2
+    usage >&2
+    exit 2
+    ;;
+esac
+

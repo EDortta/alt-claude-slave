@@ -1,0 +1,6 @@
+# id|huggingface_repo|quant|context|threads|status|purpose
+qwen-coder-3b|Qwen/Qwen2.5-Coder-3B-Instruct-GGUF|Q4_K_M|8192|16|primary|equilibrio entre qualidade e velocidade
+qwen-coder-7b|Qwen/Qwen2.5-Coder-7B-Instruct-GGUF|Q4_K_M|8192|16|candidate|mais qualidade; validar latencia
+qwen-coder-1.5b|Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF|Q4_K_M|8192|16|baseline|tarefas mecanicas e referencia de velocidade
+deepseek-coder-lite|bartowski/DeepSeek-Coder-V2-Lite-Instruct-GGUF|Q4_K_M|8192|16|experimental|MoE de fronteira; descartar se lento
+
