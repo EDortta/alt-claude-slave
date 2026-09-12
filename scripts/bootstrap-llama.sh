@@ -6,9 +6,9 @@ INSTALL_DIR="${LLAMA_INSTALL_DIR:-$HOME/.local/opt/llama.cpp}"
 
 if command -v apt-get >/dev/null 2>&1; then
   sudo apt-get update
-  sudo apt-get install -y build-essential cmake git libcurl4-openssl-dev libopenblas-dev
+  sudo apt-get install -y build-essential cmake git libcurl4-openssl-dev libopenblas-dev time
 else
-  echo "Instale CMake, compilador C++, Git, libcurl e OpenBLAS antes de continuar." >&2
+  echo "Instale CMake, compilador C++, Git, libcurl, OpenBLAS e GNU time antes de continuar." >&2
   exit 1
 fi
 
@@ -32,4 +32,3 @@ for binary in llama-cli llama-server llama-bench; do
 done
 
 echo "llama.cpp instalado em $INSTALL_DIR/bin"
-
