@@ -58,7 +58,7 @@ class SlaveMcpIntegrationTest(unittest.TestCase):
             }
         )
         self.server = subprocess.Popen(
-            [str(ROOT / "slave-mcp")],
+            ["python3", str(ROOT / "scripts/slave_mcp.py")],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
