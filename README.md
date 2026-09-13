@@ -102,7 +102,7 @@ sudo incus exec alt-claude-slave -- su - slave -c \
 ### Conectar o Codex no devel3
 
 ```bash
-./scripts/setup-codex-client.sh
+bash ./scripts/setup-codex-client.sh
 codex mcp list
 ```
 
@@ -117,7 +117,7 @@ O script nao usa Cloudflare e nao exige SSH direto no container.
 ### Testes
 
 ```bash
-./tests/run.sh
+bash ./tests/run.sh
 ```
 
 O teste de integracao inicia o MCP, cria um repositorio temporario, executa um
