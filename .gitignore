@@ -1,4 +1,5 @@
 results/*.log
 models/
 .cache/
-
+__pycache__/
+*.py[cod]

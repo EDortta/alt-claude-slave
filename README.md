@@ -9,10 +9,11 @@ revisao.
 
 ## Estrategia
 
-1. Codex ou Copilot escreve um contrato em `tasks/`.
-2. O T610 executa a tarefa com um modelo local servido por `llama.cpp`.
-3. Testes deterministas validam o resultado.
-4. Codex ou Copilot revisa o diff e decide se ele pode ser integrado.
+1. Codex ou Copilot envia um contrato pelo MCP.
+2. O T610 cria branch e worktree isolados para a tarefa.
+3. O modelo local produz somente um unified diff.
+4. O worker valida caminhos, aplica o patch e executa os testes declarados.
+5. Codex ou Copilot le o diff e decide se ele pode ser integrado.
 
 O modelo local nao deve decidir arquitetura nem trabalhar sem limites de arquivos.
 
@@ -70,9 +71,61 @@ Use `tasks/TEMPLATE.md`. Cada tarefa precisa declarar objetivo, arquivos
 permitidos, restricoes, comandos de teste e criterio de aceite. O executor deve
 parar se precisar sair desse contrato.
 
-## Integracao futura com alt-claude
+## Servidor MCP
 
-O ponto de integracao sera um perfil `local-coder` no projeto `alt-claude`,
-apontando para `http://dom1:8080/v1`. Esta primeira etapa mede capacidade real
-antes de automatizar delegacao, commits ou fallback.
+`slave-mcp` e um servidor MCP por `stdio`, escrito em Python sem dependencias
+externas. Ele nao abre porta TCP. No desenho padrao, o Codex no `devel3` inicia
+o processo dentro do container por SSH e `incus exec`.
 
+Ferramentas expostas:
+
+- `system_status`: diagnostico do executor;
+- `models_list`: catalogo local;
+- `repositories_list`: repositorios previamente autorizados;
+- `task_submit`: cria tarefa assincrona;
+- `task_status`: acompanha o estado;
+- `task_logs`: le o final do log;
+- `task_diff`: devolve o patch para revisao;
+- `task_cancel`: encerra uma tarefa preservando evidencias.
+
+Uma tarefa executa por vez. As demais permanecem na fila, evitando que dois
+modelos disputem CPU e memoria no T610. O worker nunca cria commit, faz push ou
+merge. O resultado permanece no worktree e no arquivo de diff.
+
+### Atualizar o container no Dom1
+
+```bash
+sudo incus exec alt-claude-slave -- su - slave -c \
+  'cd /srv/alt-claude/repos/alt-claude-slave && git pull'
+```
+
+### Conectar o Codex no devel3
+
+```bash
+bash ./scripts/setup-codex-client.sh
+codex mcp list
+```
+
+O caminho utilizado e:
+
+```text
+Codex -> SSH esteban@dom1 -> sudo incus exec -> slave-mcp
+```
+
+O script nao usa Cloudflare e nao exige SSH direto no container.
+
+### Testes
+
+```bash
+bash ./tests/run.sh
+```
+
+O teste de integracao inicia o MCP, cria um repositorio temporario, executa um
+modelo falso, aplica o patch em worktree, roda a validacao e consulta o diff
+pelo protocolo.
+
+## Integracao com alt-claude
+
+O MCP e o caminho para delegacao planejador-executor. Um perfil `local-coder`
+no `alt-claude` pode continuar sendo usado para conversar diretamente com o
+`llama-server`, mas nao substitui o contrato, o worktree e os controles do MCP.
