@@ -140,7 +140,7 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y --no-install-recommends \
   bash ca-certificates cmake curl g++ git jq libopenblas-dev libssl-dev \
-  make openssh-server pkg-config python3 python3-venv rsync
+  make openssh-server pkg-config python3 python3-venv rsync time
 
 if ! id slave >/dev/null 2>&1; then
   useradd --create-home --shell /bin/bash slave

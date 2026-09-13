@@ -17,6 +17,11 @@ RESULT="$ROOT_DIR/results/${STAMP}-${MODEL_ID}.log"
 
 mkdir -p "$ROOT_DIR/results"
 
+if [[ ! -x /usr/bin/time ]]; then
+  echo "Erro: /usr/bin/time nao encontrado. Instale o pacote 'time'." >&2
+  exit 1
+fi
+
 PROMPT='Voce e um implementador. Escreva somente codigo Python. Implemente uma funcao LRUCache com get e put, capacidade configuravel, O(1), type hints e sem dependencias externas. Inclua cinco testes usando unittest, cobrindo atualizacao, despejo e capacidade um.'
 
 {
@@ -38,4 +43,3 @@ PROMPT='Voce e um implementador. Escreva somente codigo Python. Implemente uma f
 } 2>&1 | tee "$RESULT"
 
 echo "Resultado: $RESULT"
-
