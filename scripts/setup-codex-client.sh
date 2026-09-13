@@ -7,13 +7,13 @@ set -Eeuo pipefail
 # Variaveis opcionais:
 #   DOM1_SSH_TARGET=esteban@dom1.inovacaosistemas.com.br
 #   CONTAINER_NAME=alt-claude-slave
-#   REMOTE_MCP=/srv/alt-claude/repos/alt-claude-slave/slave-mcp
+#   REMOTE_MCP=/srv/alt-claude/repos/alt-claude-slave/scripts/slave_mcp.py
 #   MCP_NAME=alt-claude-slave
 #   INSTALL_DIR=/home/esteban/.local/bin
 
 readonly DOM1_SSH_TARGET="${DOM1_SSH_TARGET:-esteban@dom1.inovacaosistemas.com.br}"
 readonly CONTAINER_NAME="${CONTAINER_NAME:-alt-claude-slave}"
-readonly REMOTE_MCP="${REMOTE_MCP:-/srv/alt-claude/repos/alt-claude-slave/slave-mcp}"
+readonly REMOTE_MCP="${REMOTE_MCP:-/srv/alt-claude/repos/alt-claude-slave/scripts/slave_mcp.py}"
 readonly MCP_NAME="${MCP_NAME:-alt-claude-slave}"
 readonly INSTALL_DIR="${INSTALL_DIR:-${HOME}/.local/bin}"
 readonly BRIDGE_PATH="${INSTALL_DIR}/alt-claude-slave-mcp"
@@ -43,7 +43,7 @@ if ! ssh -T \
   -o BatchMode=yes \
   -o ConnectTimeout=10 \
   "$DOM1_SSH_TARGET" \
-  "sudo -n incus exec '$CONTAINER_NAME' -- test -x '$REMOTE_MCP'"; then
+  "sudo -n incus exec '$CONTAINER_NAME' -- test -r '$REMOTE_MCP'"; then
   cat >&2 <<EOF
 O caminho SSH e o container estao acessiveis, mas ainda nao existe:
 
@@ -76,7 +76,7 @@ exec ssh -T \\
     --env HOME=/home/slave \\
     --env LLAMA_CACHE=/srv/alt-claude/models \\
     --env LLAMA_BIN=/home/slave/.local/opt/llama.cpp/bin \\
-    --user 1000 --group 1000 -- '$REMOTE_MCP'"
+    --user 1000 --group 1000 -- python3 '$REMOTE_MCP'"
 EOF
 
 install -m 0755 "$temporary_bridge" "$BRIDGE_PATH"
