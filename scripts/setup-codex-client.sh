@@ -29,6 +29,8 @@ die() {
 
 command -v ssh >/dev/null 2>&1 || die "Cliente SSH nao encontrado."
 command -v codex >/dev/null 2>&1 || die "Codex CLI nao encontrado no devel3."
+command -v python3 >/dev/null 2>&1 || die "Python 3 nao encontrado no devel3."
+command -v timeout >/dev/null 2>&1 || die "Comando timeout nao encontrado no devel3."
 
 log "Testando SSH ate $DOM1_SSH_TARGET"
 ssh -T \
@@ -65,7 +67,11 @@ cat >"$temporary_bridge" <<EOF
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
+readonly LOG_DIR="\${XDG_STATE_HOME:-\${HOME}/.local/state}/alt-claude-slave"
+install -d -m 0700 "\$LOG_DIR"
+
 exec ssh -T \\
+  -o LogLevel=ERROR \\
   -o BatchMode=yes \\
   -o ConnectTimeout=10 \\
   -o ServerAliveInterval=30 \\
@@ -76,20 +82,52 @@ exec ssh -T \\
     --env HOME=/home/slave \\
     --env LLAMA_CACHE=/srv/alt-claude/models \\
     --env LLAMA_BIN=/home/slave/.local/opt/llama.cpp/bin \\
-    --user 1000 --group 1000 -- python3 '$REMOTE_MCP'"
+    --user 1000 --group 1000 -- python3 '$REMOTE_MCP'" \\
+  2> >(tee -a "\$LOG_DIR/mcp-stderr.log" >&2)
 EOF
 
 install -m 0755 "$temporary_bridge" "$BRIDGE_PATH"
 
-if codex mcp list 2>/dev/null | awk '{print $1}' | grep -Fxq "$MCP_NAME"; then
-  log "O MCP $MCP_NAME ja esta registrado no Codex; mantendo a configuracao existente"
-  printf 'Se o caminho mudou, rode:\n'
-  printf '  codex mcp remove %q\n' "$MCP_NAME"
-  printf '  codex mcp add %q -- %q\n' "$MCP_NAME" "$BRIDGE_PATH"
-else
-  log "Registrando o MCP no Codex"
-  codex mcp add "$MCP_NAME" -- "$BRIDGE_PATH"
+log "Validando handshake MCP de ponta a ponta"
+probe_stdout="$(mktemp)"
+probe_stderr="$(mktemp)"
+trap 'rm -f "$temporary_bridge" "$probe_stdout" "$probe_stderr"' EXIT
+
+if ! printf '%s\n' \
+  '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"alt-claude-slave-setup","version":"1"}}}' \
+  | timeout 20 "$BRIDGE_PATH" >"$probe_stdout" 2>"$probe_stderr"; then
+  printf 'O servidor MCP encerrou durante o handshake. Erro:\n' >&2
+  sed -n '1,80p' "$probe_stderr" >&2
+  exit 4
 fi
+
+if ! python3 - "$probe_stdout" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+lines = [line for line in open(path, encoding="utf-8") if line.strip()]
+if len(lines) != 1:
+    raise SystemExit(f"stdout MCP invalido: esperada 1 linha JSON, recebidas {len(lines)}")
+message = json.loads(lines[0])
+if message.get("id") != 1 or message.get("result", {}).get("serverInfo", {}).get("name") != "alt-claude-slave":
+    raise SystemExit(f"resposta initialize inesperada: {message!r}")
+PY
+then
+  printf 'Resposta recebida do MCP:\n' >&2
+  sed -n '1,20p' "$probe_stdout" >&2
+  printf 'Erros recebidos pelo bridge:\n' >&2
+  sed -n '1,80p' "$probe_stderr" >&2
+  exit 5
+fi
+
+if codex mcp list 2>/dev/null | awk '{print $1}' | grep -Fxq "$MCP_NAME"; then
+  log "Removendo registro MCP anterior"
+  codex mcp remove "$MCP_NAME"
+fi
+
+log "Registrando o MCP no Codex"
+codex mcp add "$MCP_NAME" -- "$BRIDGE_PATH"
 
 log "Configuracao concluida"
 codex mcp list
