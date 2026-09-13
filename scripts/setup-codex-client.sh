@@ -40,12 +40,12 @@ ssh -T \
   "sudo -n incus info '$CONTAINER_NAME' >/dev/null" \
   || die "SSH funcionou, mas sudo -n incus nao conseguiu acessar o container $CONTAINER_NAME no Dom1."
 
-log "Verificando o executavel MCP dentro do container"
+log "Verificando o servidor MCP como usuario slave"
 if ! ssh -T \
   -o BatchMode=yes \
   -o ConnectTimeout=10 \
   "$DOM1_SSH_TARGET" \
-  "sudo -n incus exec '$CONTAINER_NAME' -- test -r '$REMOTE_MCP'"; then
+  "sudo -n incus exec '$CONTAINER_NAME' -- runuser -u slave -- test -r '$REMOTE_MCP'"; then
   cat >&2 <<EOF
 O caminho SSH e o container estao acessiveis, mas ainda nao existe:
 
@@ -82,7 +82,7 @@ exec ssh -T \\
     --env HOME=/home/slave \\
     --env LLAMA_CACHE=/srv/alt-claude/models \\
     --env LLAMA_BIN=/home/slave/.local/opt/llama.cpp/bin \\
-    --user 1000 --group 1000 -- python3 '$REMOTE_MCP'" \\
+    -- runuser -u slave -- python3 '$REMOTE_MCP'" \\
   2> >(tee -a "\$LOG_DIR/mcp-stderr.log" >&2)
 EOF
 
