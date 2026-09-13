@@ -41,7 +41,7 @@ require_binary() {
 }
 
 load_model() {
-  local row
+  local row online_threads
   row="$(model_row "$1")" || {
     echo "Erro: perfil desconhecido: $1" >&2
     list_models >&2
@@ -49,6 +49,14 @@ load_model() {
   }
   IFS='|' read -r MODEL_ID MODEL_REPO MODEL_QUANT MODEL_CONTEXT MODEL_THREADS MODEL_STATUS MODEL_PURPOSE <<< "$row"
   MODEL_THREADS="${SLAVE_THREADS:-$MODEL_THREADS}"
+  [[ "$MODEL_THREADS" =~ ^[1-9][0-9]*$ ]] || {
+    echo "Erro: numero de threads invalido: $MODEL_THREADS" >&2
+    exit 2
+  }
+  online_threads="$(nproc)"
+  if (( MODEL_THREADS > online_threads )); then
+    MODEL_THREADS="$online_threads"
+  fi
 }
 
 command="${1:-help}"
@@ -82,4 +90,3 @@ case "$command" in
     exit 2
     ;;
 esac
-
