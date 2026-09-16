@@ -1,0 +1,3 @@
+bash: line 1: hugging: command not found
+bash: line 1: model | head -n 160: command not found
+bash: line 1: --hf-repo: command not found
