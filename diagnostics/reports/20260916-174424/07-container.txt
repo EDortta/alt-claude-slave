@@ -1,0 +1,30 @@
++ ssh -T -o BatchMode=yes -o ConnectTimeout=10 'esteban@dom1.inovacaosistemas.com.br' 'sudo -n incus exec "alt-claude-slave" -- bash -lc '\''id; uname -a; python3 --version; git --version; echo; ls -lah "/srv/alt-claude/repos/alt-claude-slave"; echo; cd "/srv/alt-claude/repos/alt-claude-slave" && git status --short --branch && git log -3 --oneline --decorate; echo; ls -lah scripts/slave_mcp.py slave-mcp 2>&1 || true'\'''
+uid=0(root) gid=0(root) groups=0(root)
+Linux alt-claude-slave 6.12.86+deb12-amd64 #1 SMP PREEMPT_DYNAMIC Debian 6.12.86-1~bpo12+1 (2026-05-08) x86_64 x86_64 x86_64 GNU/Linux
+Python 3.12.3
+git version 2.43.0
+
+total 24K
+drwxr-xr-x 1 slave slave  148 Sep 13 14:01 .
+drwxr-x--- 1 slave slave   32 Sep 12 22:38 ..
+drwxr-xr-x 1 slave slave  176 Sep 13 14:57 .git
+-rw-rw-r-- 1 slave slave   53 Sep 13 13:19 .gitignore
+-rw-r--r-- 1 slave slave 1.1K Sep 12 22:38 LICENSE
+-rw-rw-r-- 1 slave slave 4.1K Sep 13 13:19 README.md
+drwxr-xr-x 1 slave slave   20 Sep 12 22:38 config
+drwxr-xr-x 1 slave slave  220 Sep 13 14:28 results
+drwxr-xr-x 1 slave slave  244 Sep 13 14:01 scripts
+-rwxr-xr-x 1 slave slave 2.4K Sep 13 14:01 slave
+-rw-rw-r-- 1 slave slave  143 Sep 13 13:19 slave-mcp
+drwxr-xr-x 1 slave slave   22 Sep 12 22:38 tasks
+drwxrwxr-x 1 slave slave   68 Sep 13 13:19 tests
+
+
+-rw-rw-r-- 1 slave slave 14K Sep 13 13:19 scripts/slave_mcp.py
+-rw-rw-r-- 1 slave slave 143 Sep 13 13:19 slave-mcp
+fatal: detected dubious ownership in repository at '/srv/alt-claude/repos/alt-claude-slave'
+To add an exception for this directory, call:
+
+	git config --global --add safe.directory /srv/alt-claude/repos/alt-claude-slave
+
+exit=0

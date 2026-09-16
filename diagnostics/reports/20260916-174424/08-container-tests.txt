@@ -1,0 +1,9 @@
++ ssh -T -o BatchMode=yes -o ConnectTimeout=10 'esteban@dom1.inovacaosistemas.com.br' 'sudo -n incus exec "alt-claude-slave" -- bash -lc '\''cd "/srv/alt-claude/repos/alt-claude-slave" && bash tests/run.sh'\'''
+test_protocol_and_task_execution (test_slave_mcp.SlaveMcpIntegrationTest.test_protocol_and_task_execution) ... ok
+
+----------------------------------------------------------------------
+Ran 1 test in 0.434s
+
+OK
+
+exit=0

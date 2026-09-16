@@ -1,0 +1,11 @@
++ cd '/home/esteban/Sync/Projects/AI/alt-claude-slave' && git status --short --branch && echo && git log -5 --oneline --decorate
+## diagnostics/mcp-end-to-end...origin/diagnostics/mcp-end-to-end
+?? diagnostics/reports/
+
+a8c26d8 (HEAD -> diagnostics/mcp-end-to-end, origin/diagnostics/mcp-end-to-end) diag: make MCP diagnostic progress visible
+0d41d20 diag: add report publisher helper
+5af8853 diag: add reproducible MCP diagnostics
+a4f0008 diag: add reproducible MCP diagnostics
+930e3af (origin/main, origin/HEAD, main) Fix benchmark dependencies and CPU allocation
+
+exit=0

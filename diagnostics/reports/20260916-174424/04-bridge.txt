@@ -1,0 +1,27 @@
++ ls -lah '/home/esteban/.local/bin/alt-claude-slave-mcp' 2>&1 || true; echo; file '/home/esteban/.local/bin/alt-claude-slave-mcp' 2>&1 || true; echo; sed -n '1,220p' '/home/esteban/.local/bin/alt-claude-slave-mcp' 2>/dev/null | sed -E 's/(token|key|secret|authorization)([^= :]*)([=: ]+).*/\1\2\3<redacted>/Ig' || true
+-rwxr-xr-x 1 esteban esteban 705 Sep 13 10:53 /home/esteban/.local/bin/alt-claude-slave-mcp
+
+/home/esteban/.local/bin/alt-claude-slave-mcp: Bourne-Again shell script, ASCII text executable
+
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+readonly LOG_DIR="${XDG_STATE_HOME:-${HOME}/.local/state}/alt-claude-slave"
+install -d -m 0700 "$LOG_DIR"
+
+exec ssh -T \
+  -o LogLevel=ERROR \
+  -o BatchMode=yes \
+  -o ConnectTimeout=10 \
+  -o ServerAliveInterval=30 \
+  -o ServerAliveCountMax=3 \
+  'esteban@dom1.inovacaosistemas.com.br' \
+  "sudo -n incus exec 'alt-claude-slave' \
+    --cwd /srv/alt-claude/repos/alt-claude-slave \
+    --env HOME=/home/slave \
+    --env LLAMA_CACHE=/srv/alt-claude/models \
+    --env LLAMA_BIN=/home/slave/.local/opt/llama.cpp/bin \
+    -- runuser -u slave -- python3 '/srv/alt-claude/repos/alt-claude-slave/scripts/slave_mcp.py'" \
+  2> >(tee -a "$LOG_DIR/mcp-stderr.log" >&2)
+
+exit=0

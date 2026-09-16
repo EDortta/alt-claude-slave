@@ -1,0 +1,14 @@
++ codex mcp list 2>&1 || true; echo; codex mcp get 'alt-claude-slave' 2>&1 || true
+Name              Command                                        Args  Env  Cwd  Status   Auth       
+alt-claude-slave  /home/esteban/.local/bin/alt-claude-slave-mcp  -     -    -    enabled  Unsupported
+
+alt-claude-slave
+  enabled: true
+  transport: stdio
+  command: /home/esteban/.local/bin/alt-claude-slave-mcp
+  args: -
+  cwd: -
+  env: -
+  remove: codex mcp remove alt-claude-slave
+
+exit=0

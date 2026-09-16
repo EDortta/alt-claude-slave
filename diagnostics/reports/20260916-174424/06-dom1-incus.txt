@@ -1,0 +1,99 @@
++ ssh -T -o BatchMode=yes -o ConnectTimeout=10 'esteban@dom1.inovacaosistemas.com.br' 'echo HOST:; uname -a; echo; command -v incus; incus --version; echo; sudo -n incus list; echo; sudo -n incus info "alt-claude-slave"'
+HOST:
+Linux dom1-inovacao 6.12.86+deb12-amd64 #1 SMP PREEMPT_DYNAMIC Debian 6.12.86-1~bpo12+1 (2026-05-08) x86_64 GNU/Linux
+
+/usr/bin/incus
+6.0.4
+
++------------------+---------+------------------------------+------+-----------+-----------+
+|       NAME       |  STATE  |             IPV4             | IPV6 |   TYPE    | SNAPSHOTS |
++------------------+---------+------------------------------+------+-----------+-----------+
+| alt-claude-slave | RUNNING | 10.114.81.170 (eth0)         |      | CONTAINER | 0         |
++------------------+---------+------------------------------+------+-----------+-----------+
+| apresentacao     | RUNNING | 172.18.0.1 (br-46c815ab277d) |      | CONTAINER | 0         |
+|                  |         | 172.17.0.1 (docker0)         |      |           |           |
+|                  |         | 10.114.81.25 (eth0)          |      |           |           |
++------------------+---------+------------------------------+------+-----------+-----------+
+| clara            | RUNNING | 172.18.0.1 (br-7ca7abe6bb7a) |      | CONTAINER | 1         |
+|                  |         | 172.17.0.1 (docker0)         |      |           |           |
+|                  |         | 10.114.81.214 (eth0)         |      |           |           |
++------------------+---------+------------------------------+------+-----------+-----------+
+| codexbridge      | RUNNING | 10.114.81.126 (eth0)         |      | CONTAINER | 0         |
++------------------+---------+------------------------------+------+-----------+-----------+
+| drywall          | RUNNING | 172.18.0.1 (br-3e6303eaf3be) |      | CONTAINER | 0         |
+|                  |         | 172.17.0.1 (docker0)         |      |           |           |
+|                  |         | 10.114.81.246 (eth0)         |      |           |           |
++------------------+---------+------------------------------+------+-----------+-----------+
+| flowlab          | RUNNING | 172.18.0.1 (br-c56e419004d0) |      | CONTAINER | 2         |
+|                  |         | 172.17.0.1 (docker0)         |      |           |           |
+|                  |         | 10.114.81.67 (eth0)          |      |           |           |
++------------------+---------+------------------------------+------+-----------+-----------+
+| frida-db         | RUNNING | 10.114.81.60 (eth0)          |      | CONTAINER | 0         |
++------------------+---------+------------------------------+------+-----------+-----------+
+| igrejapequena    | RUNNING | 172.18.0.1 (br-2f1123ce45c3) |      | CONTAINER | 1         |
+|                  |         | 172.17.0.1 (docker0)         |      |           |           |
+|                  |         | 10.114.81.205 (eth0)         |      |           |           |
++------------------+---------+------------------------------+------+-----------+-----------+
+| lumina           | RUNNING | 172.18.0.1 (br-c440def720a3) |      | CONTAINER | 1         |
+|                  |         | 172.17.0.1 (docker0)         |      |           |           |
+|                  |         | 10.114.81.198 (eth0)         |      |           |           |
++------------------+---------+------------------------------+------+-----------+-----------+
+| mgmt             | STOPPED |                              |      | CONTAINER | 0         |
++------------------+---------+------------------------------+------+-----------+-----------+
+| nuomed           | RUNNING | 172.18.0.1 (br-c0659af84913) |      | CONTAINER | 1         |
+|                  |         | 172.17.0.1 (docker0)         |      |           |           |
+|                  |         | 10.114.81.131 (eth0)         |      |           |           |
++------------------+---------+------------------------------+------+-----------+-----------+
+| registry         | RUNNING | 172.17.0.1 (docker0)         |      | CONTAINER | 1         |
+|                  |         | 10.114.81.200 (eth0)         |      |           |           |
++------------------+---------+------------------------------+------+-----------+-----------+
+| stg              | RUNNING | 172.18.0.1 (br-aee7190a5b75) |      | CONTAINER | 0         |
+|                  |         | 172.17.0.1 (docker0)         |      |           |           |
+|                  |         | 10.114.81.50 (eth0)          |      |           |           |
++------------------+---------+------------------------------+------+-----------+-----------+
+| wahub            | STOPPED |                              |      | CONTAINER | 1         |
++------------------+---------+------------------------------+------+-----------+-----------+
+
+Name: alt-claude-slave
+Description: 
+Status: RUNNING
+Type: container
+Architecture: x86_64
+PID: 2052
+Created: 2026/09/12 19:37 -03
+Last Used: 2026/09/16 06:08 -03
+Started: 2026/09/16 06:08 -03
+
+Resources:
+  Processes: 13
+  CPU usage:
+    CPU usage (in seconds): 3
+  Memory usage:
+    Memory (current): 201.86MiB
+  Network usage:
+    eth0:
+      Type: broadcast
+      State: UP
+      Host interface: vethaed10ae6
+      MAC address: 10:66:6a:d2:ea:b2
+      MTU: 1500
+      Bytes received: 50.33kB
+      Bytes sent: 12.74kB
+      Packets received: 530
+      Packets sent: 104
+      IP addresses:
+        inet:  10.114.81.170/24 (global)
+        inet6: fe80::1266:6aff:fed2:eab2/64 (link)
+    lo:
+      Type: loopback
+      State: UP
+      MTU: 65536
+      Bytes received: 0B
+      Bytes sent: 0B
+      Packets received: 0
+      Packets sent: 0
+      IP addresses:
+        inet:  127.0.0.1/8 (local)
+        inet6: ::1/128 (local)
+
+exit=0

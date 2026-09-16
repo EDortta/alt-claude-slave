@@ -1,0 +1,5 @@
++ tail -n 200 '/home/esteban/.local/state/alt-claude-slave/mcp-stderr.log' 2>&1 || true
+python3: can't open file '/srv/alt-claude/repos/alt-claude-slave/scripts/slave_mcp.py': [Errno 13] Permission denied
+ssh: connect to host dom1.inovacaosistemas.com.br port 22: No route to host
+
+exit=0

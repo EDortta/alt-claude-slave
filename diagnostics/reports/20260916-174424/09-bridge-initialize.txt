@@ -1,0 +1,4 @@
++ initialize via local bridge
+{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-06-18","capabilities":{"tools":{"listChanged":false}},"serverInfo":{"name":"alt-claude-slave","version":"0.1.0"},"instructions":"Executor local limitado. Liste repositorios antes de submeter tarefas. Toda tarefa deve declarar arquivos permitidos e deve ser revisada pelo planejador; o servidor nao cria commit nem faz merge."}}
+
+exit=0
