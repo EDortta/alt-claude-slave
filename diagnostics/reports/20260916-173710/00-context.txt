@@ -1,0 +1,9 @@
+captured_at=2026-09-16T17:37:10-03:00
+host=devel3
+user=esteban
+repo=/home/esteban/Sync/Projects/AI/alt-claude-slave
+dom1=esteban@dom1.inovacaosistemas.com.br
+container=alt-claude-slave
+remote_repo=/srv/alt-claude/repos/alt-claude-slave
+bridge=/home/esteban/.local/bin/alt-claude-slave-mcp
+mcp_name=alt-claude-slave

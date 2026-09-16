@@ -1,0 +1,14 @@
++ uname -a; echo; command -v codex || true; codex --version 2>&1 || true; echo; command -v ssh || true; ssh -V 2>&1 || true; echo; python3 --version; echo; git --version
+Linux devel3 5.15.0-187-generic #197-Ubuntu SMP Fri Jul 17 19:17:01 UTC 2026 x86_64 x86_64 x86_64 GNU/Linux
+
+/home/esteban/.nvm/versions/node/v22.20.0/bin/codex
+codex-cli 0.154.0
+
+/usr/bin/ssh
+OpenSSH_8.9p1 Ubuntu-3ubuntu0.16, OpenSSL 3.0.2 15 Mar 2022
+
+Python 3.10.12
+
+git version 2.34.1
+
+exit=0
