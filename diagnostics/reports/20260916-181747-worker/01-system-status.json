@@ -1,0 +1,1 @@
+{"server_version": "0.1.0", "project_root": "/srv/alt-claude/repos/alt-claude-slave", "repos_dir": "/srv/alt-claude/repos", "state_dir": "/srv/alt-claude/state", "llama_bin": "/home/slave/.local/opt/llama.cpp/bin", "llama_available": true, "repositories": 2, "models": 4, "tasks": {}}
