@@ -1,0 +1,2 @@
+model	level	max_tokens	timeout_s	elapsed_s	status	result	task_id
+qwen-coder-1.5b	easy	96	300	191	failed	FAIL	20260917T202252Z-808a00c3
