@@ -7,7 +7,7 @@ CONTAINER_NAME="${CONTAINER_NAME:-alt-claude-slave}"
 REMOTE_REPO="${REMOTE_REPO:-/srv/alt-claude/repos/alt-claude-slave}"
 BRIDGE="${ALT_CLAUDE_SLAVE_MCP:-$HOME/.local/bin/alt-claude-slave-mcp}"
 MODELS_CSV="${SLAVE_BENCH_MODELS:-qwen-coder-1.5b}"
-LEVELS_CSV="${SLAVE_BENCH_LEVELS:-easy}"
+LEVELS_CSV="${SLAVE_BENCH_LEVELS:-medium}"
 POLL_SECONDS="${SLAVE_BENCH_POLL:-5}"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 REPORT_DIR="${1:-$ROOT/diagnostics/reports/$STAMP-benchmark}"
@@ -95,8 +95,8 @@ subprocess.run(['git','config','user.name','slave-benchmark'], cwd=root, check=T
 if level == 'easy':
     (root/'hello.txt').write_text('hello before slave\n')
 elif level == 'medium':
-    (root/'numbers.py').write_text('def clamp(value, minimum, maximum):\n    return value\n')
-    (root/'test_numbers.py').write_text('''import unittest\nfrom numbers import clamp\n\nclass TestClamp(unittest.TestCase):\n    def test_inside(self): self.assertEqual(clamp(5, 1, 10), 5)\n    def test_low(self): self.assertEqual(clamp(-2, 1, 10), 1)\n    def test_high(self): self.assertEqual(clamp(20, 1, 10), 10)\n    def test_invalid(self):\n        with self.assertRaises(ValueError): clamp(1, 5, 2)\n\nif __name__ == "__main__": unittest.main()\n''')
+    (root/'clamp_utils.py').write_text('def clamp(value, minimum, maximum):\n    return value\n')
+    (root/'test_clamp_utils.py').write_text('''import unittest\nfrom clamp_utils import clamp\n\nclass TestClamp(unittest.TestCase):\n    def test_inside(self): self.assertEqual(clamp(5, 1, 10), 5)\n    def test_low(self): self.assertEqual(clamp(-2, 1, 10), 1)\n    def test_high(self): self.assertEqual(clamp(20, 1, 10), 10)\n    def test_invalid(self):\n        with self.assertRaises(ValueError): clamp(1, 5, 2)\n\nif __name__ == "__main__": unittest.main()\n''')
 elif level == 'deep':
     (root/'events.py').write_text('def summarize_events(events):\n    return {}\n')
     (root/'test_events.py').write_text('''import copy, unittest\nfrom events import summarize_events\n\nclass TestEvents(unittest.TestCase):\n    def test_groups(self):\n        data=[{"user":"ana","action":"buy","value":10},{"user":"ana","action":"view","value":2},{"user":"bob","action":"buy","value":7},{"user":"ana","action":"buy","value":3}]\n        original=copy.deepcopy(data)\n        self.assertEqual(summarize_events(data), {"ana":{"count":3,"total":15,"actions":["buy","view"]},"bob":{"count":1,"total":7,"actions":["buy"]}})\n        self.assertEqual(data, original)\n    def test_empty(self): self.assertEqual(summarize_events([]), {})\n    def test_missing_key(self):\n        with self.assertRaises(ValueError): summarize_events([{"user":"ana","action":"buy"}])\n\nif __name__ == "__main__": unittest.main()\n''')
@@ -117,7 +117,7 @@ if level == 'easy':
     allowed=['hello.txt']; tests=['test "$(cat hello.txt)" = "hello from alt-claude-slave"']
 elif level == 'medium':
     objective='Implemente clamp(value, minimum, maximum). Se minimum > maximum, levante ValueError. Valores abaixo do minimo retornam minimum, acima do maximo retornam maximum, e valores dentro do intervalo permanecem iguais.'
-    allowed=['numbers.py']; tests=['python3 -m unittest -q test_numbers.py']
+    allowed=['clamp_utils.py']; tests=['python3 -m unittest -q test_clamp_utils.py']
 else:
     objective='Implemente summarize_events(events). Cada evento e um dict com user, action e value. Retorne um dict por usuario com count, total (soma de value) e actions (lista unica em ordem alfabetica). Lista vazia retorna dict vazio. Se qualquer evento nao tiver user, action ou value, levante ValueError. Nao modifique a entrada.'
     allowed=['events.py']; tests=['python3 -m unittest -q test_events.py']
