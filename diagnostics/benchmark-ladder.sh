@@ -6,7 +6,8 @@ DOM1_SSH_TARGET="${DOM1_SSH_TARGET:-esteban@dom1.inovacaosistemas.com.br}"
 CONTAINER_NAME="${CONTAINER_NAME:-alt-claude-slave}"
 REMOTE_REPO="${REMOTE_REPO:-/srv/alt-claude/repos/alt-claude-slave}"
 BRIDGE="${ALT_CLAUDE_SLAVE_MCP:-$HOME/.local/bin/alt-claude-slave-mcp}"
-MODELS_CSV="${SLAVE_BENCH_MODELS:-qwen-coder-1.5b,qwen-coder-3b}"
+MODELS_CSV="${SLAVE_BENCH_MODELS:-qwen-coder-1.5b}"
+LEVELS_CSV="${SLAVE_BENCH_LEVELS:-easy}"
 POLL_SECONDS="${SLAVE_BENCH_POLL:-5}"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 REPORT_DIR="${1:-$ROOT/diagnostics/reports/$STAMP-benchmark}"
@@ -17,10 +18,15 @@ printf 'model\tlevel\tmax_tokens\ttimeout_s\telapsed_s\tstatus\tresult\ttask_id\
 say(){ printf '[benchmark] %s\n' "$*"; }
 [[ -x "$BRIDGE" ]] || { echo "bridge não executável: $BRIDGE" >&2; exit 2; }
 
+is_infra_error_file() {
+  local file="$1"
+  grep -Eqi 'Could not resolve hostname|Name or service not known|Connection timed out|No route to host|Connection refused|Connection reset|ssh:|incus.*(error|failed)' "$file" 2>/dev/null
+}
+
 mcp_call() {
   local tool="$1" args_json="$2" outfile="$3"
   local init call
-  init='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"alt-claude-benchmark","version":"2"}}}'
+  init='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"alt-claude-benchmark","version":"3"}}}'
   call="{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$tool"),\"arguments\":$args_json}}"
   { printf '%s\n' "$init"; printf '%s\n' "$call"; } | timeout 30 "$BRIDGE" >"$outfile" 2>&1
 }
@@ -42,17 +48,19 @@ PY
 
 case_timeout() {
   case "$1" in
-    easy) printf '%s' "${SLAVE_BENCH_EASY_TIMEOUT:-120}" ;;
-    medium) printf '%s' "${SLAVE_BENCH_MEDIUM_TIMEOUT:-300}" ;;
-    deep) printf '%s' "${SLAVE_BENCH_DEEP_TIMEOUT:-600}" ;;
+    easy) printf '%s' "${SLAVE_BENCH_EASY_TIMEOUT:-300}" ;;
+    medium) printf '%s' "${SLAVE_BENCH_MEDIUM_TIMEOUT:-600}" ;;
+    deep) printf '%s' "${SLAVE_BENCH_DEEP_TIMEOUT:-1200}" ;;
+    *) echo "nível inválido: $1" >&2; return 2 ;;
   esac
 }
 
 case_tokens() {
   case "$1" in
-    easy) printf '%s' "${SLAVE_BENCH_EASY_TOKENS:-64}" ;;
+    easy) printf '%s' "${SLAVE_BENCH_EASY_TOKENS:-96}" ;;
     medium) printf '%s' "${SLAVE_BENCH_MEDIUM_TOKENS:-192}" ;;
     deep) printf '%s' "${SLAVE_BENCH_DEEP_TOKENS:-384}" ;;
+    *) echo "nível inválido: $1" >&2; return 2 ;;
   esac
 }
 
@@ -126,59 +134,103 @@ collect_remote_artifacts() {
 }
 
 IFS=',' read -r -a MODELS <<< "$MODELS_CSV"
+IFS=',' read -r -a LEVELS <<< "$LEVELS_CSV"
 say "relatório: $REPORT_DIR"
 say "modelos: ${MODELS[*]}"
-say "easy=$(case_tokens easy)t/$(case_timeout easy)s medium=$(case_tokens medium)t/$(case_timeout medium)s deep=$(case_tokens deep)t/$(case_timeout deep)s"
+say "níveis: ${LEVELS[*]}"
 
+abort_all=0
 for model in "${MODELS[@]}"; do
   model="${model//[[:space:]]/}"
   [[ -n "$model" ]] || continue
   stop_model=0
-  for level in easy medium deep; do
+  for level in "${LEVELS[@]}"; do
+    level="${level//[[:space:]]/}"
+    [[ -n "$level" ]] || continue
     timeout_s="$(case_timeout "$level")"
     token_budget="$(case_tokens "$level")"
     if (( stop_model )); then
       printf '%s\t%s\t%s\t%s\t0\tskipped\tSKIP\t-\n' "$model" "$level" "$token_budget" "$timeout_s" >>"$SUMMARY"
-      say "$model/$level: SKIP (modelo excedeu limite anterior)"
+      say "$model/$level: SKIP"
       continue
     fi
+
     safe_model="${model//[^A-Za-z0-9._-]/-}"
     repo="alt-claude-bench-${safe_model}-${level}"
     dir="$REPORT_DIR/${safe_model}-${level}"
     mkdir -p "$dir"
     say "$model/$level: orçamento=${token_budget} tokens timeout=${timeout_s}s"
-    set_worker_tokens "$token_budget" >"$dir/worker-token-budget.txt" 2>&1
-    prepare_repo "$repo" "$level" >"$dir/repo-create.txt" 2>&1
+
+    if ! set_worker_tokens "$token_budget" >"$dir/worker-token-budget.txt" 2>&1; then
+      printf '%s\t%s\t%s\t%s\t0\tinfra-error\tINFRA_ERROR\t-\n' "$model" "$level" "$token_budget" "$timeout_s" >>"$SUMMARY"
+      say "$model/$level: INFRA_ERROR configurando worker"
+      abort_all=1
+      break
+    fi
+    if ! prepare_repo "$repo" "$level" >"$dir/repo-create.txt" 2>&1; then
+      printf '%s\t%s\t%s\t%s\t0\tinfra-error\tINFRA_ERROR\t-\n' "$model" "$level" "$token_budget" "$timeout_s" >>"$SUMMARY"
+      say "$model/$level: INFRA_ERROR preparando repo"
+      abort_all=1
+      break
+    fi
+
     args="$(case_args "$repo" "$model" "$level")"
     start_epoch=$(date +%s)
-    mcp_call task_submit "$args" "$dir/task-submit.txt"
-    task_id=$(extract_structured "$dir/task-submit.txt" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("task_id",""))')
+    if ! mcp_call task_submit "$args" "$dir/task-submit.txt"; then
+      elapsed=$(( $(date +%s) - start_epoch ))
+      status=submit-error; result=FAIL
+      if is_infra_error_file "$dir/task-submit.txt"; then status=infra-error; result=INFRA_ERROR; abort_all=1; fi
+      printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t-\n' "$model" "$level" "$token_budget" "$timeout_s" "$elapsed" "$status" "$result" >>"$SUMMARY"
+      say "$model/$level: $result no submit"
+      (( abort_all )) && break
+      continue
+    fi
+
+    task_id=$(extract_structured "$dir/task-submit.txt" 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin).get("task_id",""))' 2>/dev/null || true)
     if [[ -z "$task_id" ]]; then
-      printf '%s\t%s\t%s\t%s\t0\tsubmit-error\tFAIL\t-\n' "$model" "$level" "$token_budget" "$timeout_s" >>"$SUMMARY"
+      elapsed=$(( $(date +%s) - start_epoch ))
+      printf '%s\t%s\t%s\t%s\t%s\tsubmit-error\tFAIL\t-\n' "$model" "$level" "$token_budget" "$timeout_s" "$elapsed" >>"$SUMMARY"
       continue
     fi
     printf '%s\n' "$task_id" >"$dir/task-id.txt"
+
     final_status=unknown; result=FAIL
     while :; do
       a=$(python3 -c 'import json,sys; print(json.dumps({"task_id":sys.argv[1]}))' "$task_id")
-      mcp_call task_status "$a" "$dir/task-status-latest.txt" || true
+      if ! mcp_call task_status "$a" "$dir/task-status-latest.txt"; then
+        elapsed=$(( $(date +%s) - start_epoch ))
+        if is_infra_error_file "$dir/task-status-latest.txt"; then
+          final_status=infra-error; result=INFRA_ERROR; abort_all=1
+          say "$model/$level: INFRA_ERROR em ${elapsed}s"
+          break
+        fi
+      fi
       final_status=$(extract_structured "$dir/task-status-latest.txt" 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin).get("status","unknown"))' 2>/dev/null || echo unknown)
       elapsed=$(( $(date +%s) - start_epoch ))
       say "$model/$level: status=$final_status elapsed=${elapsed}s/${timeout_s}s"
-      case "$final_status" in succeeded) result=PASS; break;; failed|canceled) result=FAIL; break;; esac
+      case "$final_status" in
+        succeeded) result=PASS; break ;;
+        failed|canceled) result=FAIL; break ;;
+      esac
       if (( elapsed >= timeout_s )); then
         mcp_call task_cancel "$a" "$dir/task-cancel.txt" || true
-        final_status=timeout; result=TIMEOUT; stop_model=1; break
+        final_status=timeout; result=TIMEOUT; stop_model=1
+        break
       fi
       sleep "$POLL_SECONDS"
     done
+
     elapsed=$(( $(date +%s) - start_epoch ))
-    a=$(python3 -c 'import json,sys; print(json.dumps({"task_id":sys.argv[1],"max_chars":30000}))' "$task_id"); mcp_call task_logs "$a" "$dir/task-logs.txt" || true
-    a=$(python3 -c 'import json,sys; print(json.dumps({"task_id":sys.argv[1],"max_chars":60000}))' "$task_id"); mcp_call task_diff "$a" "$dir/task-diff.txt" || true
-    collect_remote_artifacts "$task_id" "$dir"
+    if [[ "$result" != INFRA_ERROR ]]; then
+      a=$(python3 -c 'import json,sys; print(json.dumps({"task_id":sys.argv[1],"max_chars":30000}))' "$task_id"); mcp_call task_logs "$a" "$dir/task-logs.txt" || true
+      a=$(python3 -c 'import json,sys; print(json.dumps({"task_id":sys.argv[1],"max_chars":60000}))' "$task_id"); mcp_call task_diff "$a" "$dir/task-diff.txt" || true
+      collect_remote_artifacts "$task_id" "$dir"
+    fi
     printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$model" "$level" "$token_budget" "$timeout_s" "$elapsed" "$final_status" "$result" "$task_id" >>"$SUMMARY"
     say "$model/$level: $result em ${elapsed}s"
+    (( abort_all )) && break
   done
+  (( abort_all )) && break
 done
 
 say "concluído"
