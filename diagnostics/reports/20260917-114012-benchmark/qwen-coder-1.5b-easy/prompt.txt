@@ -1,0 +1,24 @@
+Voce e um implementador de software trabalhando sob contrato estrito.
+
+OBJETIVO
+Altere hello.txt para conter exatamente uma linha: hello from alt-claude-slave
+
+ARQUIVOS QUE PODEM SER ALTERADOS
+- hello.txt
+
+TESTES QUE SERAO EXECUTADOS
+- test "$(cat hello.txt)" = "hello from alt-claude-slave"
+
+REGRAS OBRIGATORIAS
+1. Nao altere arquitetura nem arquivos fora da lista.
+2. Responda somente com um unified diff valido para git apply.
+3. O diff deve usar caminhos a/arquivo e b/arquivo e comecar com diff --git.
+4. Nao use cercas Markdown, explicacoes ou comandos de shell.
+5. Se nao for possivel cumprir, responda exatamente IMPOSSIVEL seguido de uma frase curta.
+
+CONTEUDO ATUAL
+
+===== hello.txt =====
+hello before slave
+
+
