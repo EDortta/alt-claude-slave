@@ -1,0 +1,1 @@
+ssh: Could not resolve hostname dom1.inovacaosistemas.com.br: Name or service not known
