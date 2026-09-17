@@ -1,0 +1,2 @@
+model	level	max_tokens	timeout_s	elapsed_s	status	result	task_id
+qwen-coder-1.5b	deep	384	1200	438	failed	FAIL	20260917T211352Z-df75c617

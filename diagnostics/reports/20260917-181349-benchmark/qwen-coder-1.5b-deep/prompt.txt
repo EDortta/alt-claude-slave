@@ -1,0 +1,33 @@
+<|im_start|>system
+Voce e um implementador de software trabalhando sob contrato estrito. Obedeca literalmente ao formato de saida solicitado.<|im_end|>
+<|im_start|>user
+OBJETIVO
+Implemente summarize_events(events). Cada evento e um dict com user, action e value. Retorne um dict por usuario com count, total (soma de value) e actions (lista unica em ordem alfabetica). Lista vazia retorna dict vazio. Se qualquer evento nao tiver user, action ou value, levante ValueError. Nao modifique a entrada.
+
+ARQUIVOS QUE PODEM SER ALTERADOS
+- events.py
+
+TESTES QUE SERAO EXECUTADOS
+- python3 -m unittest -q test_events.py
+
+FORMATO DE SAIDA OBRIGATORIO
+Para cada arquivo alterado, devolva o CONTEUDO FINAL COMPLETO neste formato:
+<<<FILE caminho/do/arquivo>>>
+conteudo final completo
+<<<END FILE>>>
+
+REGRAS OBRIGATORIAS
+1. Nao altere arquitetura nem arquivos fora da lista.
+2. Nao gere unified diff; o executor vai gerar o diff com git.
+3. Nao use cercas Markdown, explicacoes ou comandos de shell.
+4. Use somente blocos <<<FILE ...>>> / <<<END FILE>>> para arquivos alterados.
+5. Se nao for possivel cumprir, responda exatamente IMPOSSIVEL seguido de uma frase curta.
+
+CONTEUDO ATUAL
+
+===== events.py =====
+def summarize_events(events):
+    return {}
+
+<|im_end|>
+<|im_start|>assistant
