@@ -4,6 +4,7 @@ set -Eeuo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DOM1_SSH_TARGET="${DOM1_SSH_TARGET:-esteban@dom1.inovacaosistemas.com.br}"
 CONTAINER_NAME="${CONTAINER_NAME:-alt-claude-slave}"
+REMOTE_REPO="${REMOTE_REPO:-/srv/alt-claude/repos/alt-claude-slave}"
 BRIDGE="${ALT_CLAUDE_SLAVE_MCP:-$HOME/.local/bin/alt-claude-slave-mcp}"
 MODELS_CSV="${SLAVE_BENCH_MODELS:-qwen-coder-1.5b,qwen-coder-3b}"
 POLL_SECONDS="${SLAVE_BENCH_POLL:-5}"
@@ -11,7 +12,7 @@ STAMP="$(date +%Y%m%d-%H%M%S)"
 REPORT_DIR="${1:-$ROOT/diagnostics/reports/$STAMP-benchmark}"
 mkdir -p "$REPORT_DIR"
 SUMMARY="$REPORT_DIR/summary.tsv"
-printf 'model\tlevel\ttimeout_s\telapsed_s\tstatus\tresult\ttask_id\n' >"$SUMMARY"
+printf 'model\tlevel\tmax_tokens\ttimeout_s\telapsed_s\tstatus\tresult\ttask_id\n' >"$SUMMARY"
 
 say(){ printf '[benchmark] %s\n' "$*"; }
 [[ -x "$BRIDGE" ]] || { echo "bridge não executável: $BRIDGE" >&2; exit 2; }
@@ -19,7 +20,7 @@ say(){ printf '[benchmark] %s\n' "$*"; }
 mcp_call() {
   local tool="$1" args_json="$2" outfile="$3"
   local init call
-  init='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"alt-claude-benchmark","version":"1"}}}'
+  init='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"alt-claude-benchmark","version":"2"}}}'
   call="{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$tool"),\"arguments\":$args_json}}"
   { printf '%s\n' "$init"; printf '%s\n' "$call"; } | timeout 30 "$BRIDGE" >"$outfile" 2>&1
 }
@@ -45,6 +46,29 @@ case_timeout() {
     medium) printf '%s' "${SLAVE_BENCH_MEDIUM_TIMEOUT:-300}" ;;
     deep) printf '%s' "${SLAVE_BENCH_DEEP_TIMEOUT:-600}" ;;
   esac
+}
+
+case_tokens() {
+  case "$1" in
+    easy) printf '%s' "${SLAVE_BENCH_EASY_TOKENS:-64}" ;;
+    medium) printf '%s' "${SLAVE_BENCH_MEDIUM_TOKENS:-192}" ;;
+    deep) printf '%s' "${SLAVE_BENCH_DEEP_TOKENS:-384}" ;;
+  esac
+}
+
+set_worker_tokens() {
+  local tokens="$1"
+  ssh -T -o BatchMode=yes -o ConnectTimeout=10 "$DOM1_SSH_TARGET" \
+    "sudo -n incus exec '$CONTAINER_NAME' -- runuser -u slave -- python3 - '$REMOTE_REPO/scripts/slave_worker.py' '$tokens'" <<'PY'
+from pathlib import Path
+import re,sys
+p=Path(sys.argv[1]); n=sys.argv[2]
+s=p.read_text(encoding='utf-8')
+s,new_count=re.subn(r'(\"-n\",\s*\")\d+(\")', rf'\g<1>{n}\g<2>', s, count=1)
+if new_count != 1:
+    raise SystemExit('não encontrei limite -n no worker')
+p.write_text(s, encoding='utf-8')
+PY
 }
 
 prepare_repo() {
@@ -82,16 +106,13 @@ import json,sys
 repo,model,level=sys.argv[1:]
 if level == 'easy':
     objective='Altere hello.txt para conter exatamente uma linha: hello from alt-claude-slave'
-    allowed=['hello.txt']
-    tests=['test "$(cat hello.txt)" = "hello from alt-claude-slave"']
+    allowed=['hello.txt']; tests=['test "$(cat hello.txt)" = "hello from alt-claude-slave"']
 elif level == 'medium':
     objective='Implemente clamp(value, minimum, maximum). Se minimum > maximum, levante ValueError. Valores abaixo do minimo retornam minimum, acima do maximo retornam maximum, e valores dentro do intervalo permanecem iguais.'
-    allowed=['numbers.py']
-    tests=['python3 -m unittest -q test_numbers.py']
+    allowed=['numbers.py']; tests=['python3 -m unittest -q test_numbers.py']
 else:
     objective='Implemente summarize_events(events). Cada evento e um dict com user, action e value. Retorne um dict por usuario com count, total (soma de value) e actions (lista unica em ordem alfabetica). Lista vazia retorna dict vazio. Se qualquer evento nao tiver user, action ou value, levante ValueError. Nao modifique a entrada.'
-    allowed=['events.py']
-    tests=['python3 -m unittest -q test_events.py']
+    allowed=['events.py']; tests=['python3 -m unittest -q test_events.py']
 print(json.dumps({'repository':repo,'objective':objective,'allowed_files':allowed,'test_commands':tests,'model':model,'base_branch':'main'}, ensure_ascii=False))
 PY
 }
@@ -99,75 +120,63 @@ PY
 collect_remote_artifacts() {
   local task_id="$1" dir="$2"
   ssh -T -o BatchMode=yes -o ConnectTimeout=10 "$DOM1_SSH_TARGET" \
-    "sudo -n incus exec '$CONTAINER_NAME' -- runuser -u slave -- bash -lc 'cat /srv/alt-claude/state/tasks/$task_id.model-output.txt 2>/dev/null || true'" \
-    >"$dir/model-output.txt" 2>&1 || true
+    "sudo -n incus exec '$CONTAINER_NAME' -- runuser -u slave -- bash -lc 'cat /srv/alt-claude/state/tasks/$task_id.model-output.txt 2>/dev/null || true'" >"$dir/model-output.txt" 2>&1 || true
   ssh -T -o BatchMode=yes -o ConnectTimeout=10 "$DOM1_SSH_TARGET" \
-    "sudo -n incus exec '$CONTAINER_NAME' -- runuser -u slave -- bash -lc 'cat /srv/alt-claude/state/tasks/$task_id.prompt 2>/dev/null || true'" \
-    >"$dir/prompt.txt" 2>&1 || true
+    "sudo -n incus exec '$CONTAINER_NAME' -- runuser -u slave -- bash -lc 'cat /srv/alt-claude/state/tasks/$task_id.prompt 2>/dev/null || true'" >"$dir/prompt.txt" 2>&1 || true
 }
 
 IFS=',' read -r -a MODELS <<< "$MODELS_CSV"
 say "relatório: $REPORT_DIR"
 say "modelos: ${MODELS[*]}"
-say "limites: easy=$(case_timeout easy)s medium=$(case_timeout medium)s deep=$(case_timeout deep)s"
+say "easy=$(case_tokens easy)t/$(case_timeout easy)s medium=$(case_tokens medium)t/$(case_timeout medium)s deep=$(case_tokens deep)t/$(case_timeout deep)s"
 
 for model in "${MODELS[@]}"; do
   model="${model//[[:space:]]/}"
   [[ -n "$model" ]] || continue
   stop_model=0
   for level in easy medium deep; do
+    timeout_s="$(case_timeout "$level")"
+    token_budget="$(case_tokens "$level")"
     if (( stop_model )); then
-      printf '%s\t%s\t%s\t0\tskipped\tSKIP\t-\n' "$model" "$level" "$(case_timeout "$level")" >>"$SUMMARY"
+      printf '%s\t%s\t%s\t%s\t0\tskipped\tSKIP\t-\n' "$model" "$level" "$token_budget" "$timeout_s" >>"$SUMMARY"
       say "$model/$level: SKIP (modelo excedeu limite anterior)"
       continue
     fi
-    timeout_s="$(case_timeout "$level")"
     safe_model="${model//[^A-Za-z0-9._-]/-}"
     repo="alt-claude-bench-${safe_model}-${level}"
     dir="$REPORT_DIR/${safe_model}-${level}"
     mkdir -p "$dir"
-    say "$model/$level: preparando fixture"
+    say "$model/$level: orçamento=${token_budget} tokens timeout=${timeout_s}s"
+    set_worker_tokens "$token_budget" >"$dir/worker-token-budget.txt" 2>&1
     prepare_repo "$repo" "$level" >"$dir/repo-create.txt" 2>&1
     args="$(case_args "$repo" "$model" "$level")"
     start_epoch=$(date +%s)
     mcp_call task_submit "$args" "$dir/task-submit.txt"
     task_id=$(extract_structured "$dir/task-submit.txt" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("task_id",""))')
     if [[ -z "$task_id" ]]; then
-      printf '%s\t%s\t%s\t0\tsubmit-error\tFAIL\t-\n' "$model" "$level" "$timeout_s" >>"$SUMMARY"
-      say "$model/$level: FAIL no submit"
+      printf '%s\t%s\t%s\t%s\t0\tsubmit-error\tFAIL\t-\n' "$model" "$level" "$token_budget" "$timeout_s" >>"$SUMMARY"
       continue
     fi
     printf '%s\n' "$task_id" >"$dir/task-id.txt"
-    say "$model/$level: task=$task_id timeout=${timeout_s}s"
-    final_status=unknown
-    result=FAIL
+    final_status=unknown; result=FAIL
     while :; do
       a=$(python3 -c 'import json,sys; print(json.dumps({"task_id":sys.argv[1]}))' "$task_id")
       mcp_call task_status "$a" "$dir/task-status-latest.txt" || true
       final_status=$(extract_structured "$dir/task-status-latest.txt" 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin).get("status","unknown"))' 2>/dev/null || echo unknown)
       elapsed=$(( $(date +%s) - start_epoch ))
       say "$model/$level: status=$final_status elapsed=${elapsed}s/${timeout_s}s"
-      case "$final_status" in
-        succeeded) result=PASS; break ;;
-        failed|canceled) result=FAIL; break ;;
-      esac
+      case "$final_status" in succeeded) result=PASS; break;; failed|canceled) result=FAIL; break;; esac
       if (( elapsed >= timeout_s )); then
-        say "$model/$level: TIMEOUT; cancelando tarefa"
         mcp_call task_cancel "$a" "$dir/task-cancel.txt" || true
-        final_status=timeout
-        result=TIMEOUT
-        stop_model=1
-        break
+        final_status=timeout; result=TIMEOUT; stop_model=1; break
       fi
       sleep "$POLL_SECONDS"
     done
     elapsed=$(( $(date +%s) - start_epoch ))
-    a=$(python3 -c 'import json,sys; print(json.dumps({"task_id":sys.argv[1],"max_chars":30000}))' "$task_id")
-    mcp_call task_logs "$a" "$dir/task-logs.txt" || true
-    a=$(python3 -c 'import json,sys; print(json.dumps({"task_id":sys.argv[1],"max_chars":60000}))' "$task_id")
-    mcp_call task_diff "$a" "$dir/task-diff.txt" || true
+    a=$(python3 -c 'import json,sys; print(json.dumps({"task_id":sys.argv[1],"max_chars":30000}))' "$task_id"); mcp_call task_logs "$a" "$dir/task-logs.txt" || true
+    a=$(python3 -c 'import json,sys; print(json.dumps({"task_id":sys.argv[1],"max_chars":60000}))' "$task_id"); mcp_call task_diff "$a" "$dir/task-diff.txt" || true
     collect_remote_artifacts "$task_id" "$dir"
-    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$model" "$level" "$timeout_s" "$elapsed" "$final_status" "$result" "$task_id" >>"$SUMMARY"
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$model" "$level" "$token_budget" "$timeout_s" "$elapsed" "$final_status" "$result" "$task_id" >>"$SUMMARY"
     say "$model/$level: $result em ${elapsed}s"
   done
 done
