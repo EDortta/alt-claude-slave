@@ -9,6 +9,33 @@ BRANCH="${ALT_CLAUDE_SLAVE_BRANCH:-diagnostics/mcp-end-to-end}"
 export SLAVE_ACCEPTANCE_REPO="${SLAVE_ACCEPTANCE_REPO:-alt-claude-slave-acceptance}"
 export SLAVE_ACCEPTANCE_TIMEOUT="${SLAVE_ACCEPTANCE_TIMEOUT:-900}"
 
+printf '[rerun] limpando tarefas antigas de aceitação...\n'
+ssh -T -o BatchMode=yes -o ConnectTimeout=10 "$DOM1_SSH_TARGET" \
+  "sudo -n incus exec '$CONTAINER_NAME' -- runuser -u slave -- python3 - '$SLAVE_ACCEPTANCE_REPO'" <<'PY'
+import json, os, signal, sys
+from pathlib import Path
+repo = sys.argv[1]
+tasks = Path('/srv/alt-claude/state/tasks')
+for path in tasks.glob('*.json'):
+    try:
+        task = json.loads(path.read_text(encoding='utf-8'))
+    except Exception:
+        continue
+    if task.get('repository') != repo or task.get('status') not in {'queued','running'}:
+        continue
+    pid = task.get('pid')
+    if isinstance(pid, int) and pid > 1:
+        try:
+            cmd = Path(f'/proc/{pid}/cmdline').read_bytes().replace(b'\0', b' ').decode(errors='replace')
+            if 'slave_worker.py' in cmd and task.get('task_id','') in cmd:
+                os.killpg(pid, signal.SIGTERM)
+        except (FileNotFoundError, ProcessLookupError):
+            pass
+    task['status'] = 'canceled'
+    task['error'] = 'canceled by acceptance rerun cleanup'
+    path.write_text(json.dumps(task, ensure_ascii=False, indent=2, sort_keys=True) + '\n', encoding='utf-8')
+PY
+
 printf '[rerun] sincronizando código no container...\n'
 ssh -T -o BatchMode=yes -o ConnectTimeout=10 "$DOM1_SSH_TARGET" \
   "sudo -n incus exec '$CONTAINER_NAME' -- runuser -u slave -- bash -lc 'cd \"$REMOTE_REPO\" && git fetch origin && git checkout \"$BRANCH\" && git reset --hard \"origin/$BRANCH\"'"
