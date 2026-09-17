@@ -1,0 +1,7 @@
+model	level	max_tokens	timeout_s	elapsed_s	status	result	task_id
+qwen-coder-1.5b	easy	64	120	126	timeout	TIMEOUT	20260917T184831Z-98fc61e5
+qwen-coder-1.5b	medium	192	300	0	skipped	SKIP	-
+qwen-coder-1.5b	deep	384	600	0	skipped	SKIP	-
+qwen-coder-3b	easy	64	120	121	timeout	TIMEOUT	20260917T185047Z-d7bfdf26
+qwen-coder-3b	medium	192	300	0	skipped	SKIP	-
+qwen-coder-3b	deep	384	600	0	skipped	SKIP	-
