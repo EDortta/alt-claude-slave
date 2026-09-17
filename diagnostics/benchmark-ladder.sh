@@ -1,0 +1,177 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+DOM1_SSH_TARGET="${DOM1_SSH_TARGET:-esteban@dom1.inovacaosistemas.com.br}"
+CONTAINER_NAME="${CONTAINER_NAME:-alt-claude-slave}"
+BRIDGE="${ALT_CLAUDE_SLAVE_MCP:-$HOME/.local/bin/alt-claude-slave-mcp}"
+MODELS_CSV="${SLAVE_BENCH_MODELS:-qwen-coder-1.5b,qwen-coder-3b}"
+POLL_SECONDS="${SLAVE_BENCH_POLL:-5}"
+STAMP="$(date +%Y%m%d-%H%M%S)"
+REPORT_DIR="${1:-$ROOT/diagnostics/reports/$STAMP-benchmark}"
+mkdir -p "$REPORT_DIR"
+SUMMARY="$REPORT_DIR/summary.tsv"
+printf 'model\tlevel\ttimeout_s\telapsed_s\tstatus\tresult\ttask_id\n' >"$SUMMARY"
+
+say(){ printf '[benchmark] %s\n' "$*"; }
+[[ -x "$BRIDGE" ]] || { echo "bridge não executável: $BRIDGE" >&2; exit 2; }
+
+mcp_call() {
+  local tool="$1" args_json="$2" outfile="$3"
+  local init call
+  init='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"alt-claude-benchmark","version":"1"}}}'
+  call="{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$tool"),\"arguments\":$args_json}}"
+  { printf '%s\n' "$init"; printf '%s\n' "$call"; } | timeout 30 "$BRIDGE" >"$outfile" 2>&1
+}
+
+extract_structured() {
+  python3 - "$1" <<'PY'
+import json,sys
+for line in open(sys.argv[1], encoding='utf-8', errors='replace'):
+    line=line.strip()
+    if not line.startswith('{'): continue
+    try: obj=json.loads(line)
+    except Exception: continue
+    if obj.get('id') == 2:
+        print(json.dumps(obj.get('result',{}).get('structuredContent',{}), ensure_ascii=False))
+        raise SystemExit(0)
+raise SystemExit(1)
+PY
+}
+
+case_timeout() {
+  case "$1" in
+    easy) printf '%s' "${SLAVE_BENCH_EASY_TIMEOUT:-120}" ;;
+    medium) printf '%s' "${SLAVE_BENCH_MEDIUM_TIMEOUT:-300}" ;;
+    deep) printf '%s' "${SLAVE_BENCH_DEEP_TIMEOUT:-600}" ;;
+  esac
+}
+
+prepare_repo() {
+  local repo="$1" level="$2"
+  ssh -T -o BatchMode=yes -o ConnectTimeout=10 "$DOM1_SSH_TARGET" \
+    "sudo -n incus exec '$CONTAINER_NAME' -- runuser -u slave -- python3 - '$repo' '$level'" <<'PY'
+import shutil, subprocess, sys
+from pathlib import Path
+repo, level = sys.argv[1], sys.argv[2]
+root = Path('/srv/alt-claude/repos') / repo
+shutil.rmtree(root, ignore_errors=True)
+root.mkdir(parents=True)
+subprocess.run(['git','init','-b','main'], cwd=root, check=True, stdout=subprocess.DEVNULL)
+subprocess.run(['git','config','user.email','slave@example.invalid'], cwd=root, check=True)
+subprocess.run(['git','config','user.name','slave-benchmark'], cwd=root, check=True)
+if level == 'easy':
+    (root/'hello.txt').write_text('hello before slave\n')
+elif level == 'medium':
+    (root/'numbers.py').write_text('def clamp(value, minimum, maximum):\n    return value\n')
+    (root/'test_numbers.py').write_text('''import unittest\nfrom numbers import clamp\n\nclass TestClamp(unittest.TestCase):\n    def test_inside(self): self.assertEqual(clamp(5, 1, 10), 5)\n    def test_low(self): self.assertEqual(clamp(-2, 1, 10), 1)\n    def test_high(self): self.assertEqual(clamp(20, 1, 10), 10)\n    def test_invalid(self):\n        with self.assertRaises(ValueError): clamp(1, 5, 2)\n\nif __name__ == "__main__": unittest.main()\n''')
+elif level == 'deep':
+    (root/'events.py').write_text('def summarize_events(events):\n    return {}\n')
+    (root/'test_events.py').write_text('''import copy, unittest\nfrom events import summarize_events\n\nclass TestEvents(unittest.TestCase):\n    def test_groups(self):\n        data=[{"user":"ana","action":"buy","value":10},{"user":"ana","action":"view","value":2},{"user":"bob","action":"buy","value":7},{"user":"ana","action":"buy","value":3}]\n        original=copy.deepcopy(data)\n        self.assertEqual(summarize_events(data), {"ana":{"count":3,"total":15,"actions":["buy","view"]},"bob":{"count":1,"total":7,"actions":["buy"]}})\n        self.assertEqual(data, original)\n    def test_empty(self): self.assertEqual(summarize_events([]), {})\n    def test_missing_key(self):\n        with self.assertRaises(ValueError): summarize_events([{"user":"ana","action":"buy"}])\n\nif __name__ == "__main__": unittest.main()\n''')
+else:
+    raise SystemExit('unknown level')
+subprocess.run(['git','add','.'], cwd=root, check=True)
+subprocess.run(['git','commit','-m','benchmark fixture'], cwd=root, check=True, stdout=subprocess.DEVNULL)
+PY
+}
+
+case_args() {
+  local repo="$1" model="$2" level="$3"
+  python3 - "$repo" "$model" "$level" <<'PY'
+import json,sys
+repo,model,level=sys.argv[1:]
+if level == 'easy':
+    objective='Altere hello.txt para conter exatamente uma linha: hello from alt-claude-slave'
+    allowed=['hello.txt']
+    tests=['test "$(cat hello.txt)" = "hello from alt-claude-slave"']
+elif level == 'medium':
+    objective='Implemente clamp(value, minimum, maximum). Se minimum > maximum, levante ValueError. Valores abaixo do minimo retornam minimum, acima do maximo retornam maximum, e valores dentro do intervalo permanecem iguais.'
+    allowed=['numbers.py']
+    tests=['python3 -m unittest -q test_numbers.py']
+else:
+    objective='Implemente summarize_events(events). Cada evento e um dict com user, action e value. Retorne um dict por usuario com count, total (soma de value) e actions (lista unica em ordem alfabetica). Lista vazia retorna dict vazio. Se qualquer evento nao tiver user, action ou value, levante ValueError. Nao modifique a entrada.'
+    allowed=['events.py']
+    tests=['python3 -m unittest -q test_events.py']
+print(json.dumps({'repository':repo,'objective':objective,'allowed_files':allowed,'test_commands':tests,'model':model,'base_branch':'main'}, ensure_ascii=False))
+PY
+}
+
+collect_remote_artifacts() {
+  local task_id="$1" dir="$2"
+  ssh -T -o BatchMode=yes -o ConnectTimeout=10 "$DOM1_SSH_TARGET" \
+    "sudo -n incus exec '$CONTAINER_NAME' -- runuser -u slave -- bash -lc 'cat /srv/alt-claude/state/tasks/$task_id.model-output.txt 2>/dev/null || true'" \
+    >"$dir/model-output.txt" 2>&1 || true
+  ssh -T -o BatchMode=yes -o ConnectTimeout=10 "$DOM1_SSH_TARGET" \
+    "sudo -n incus exec '$CONTAINER_NAME' -- runuser -u slave -- bash -lc 'cat /srv/alt-claude/state/tasks/$task_id.prompt 2>/dev/null || true'" \
+    >"$dir/prompt.txt" 2>&1 || true
+}
+
+IFS=',' read -r -a MODELS <<< "$MODELS_CSV"
+say "relatório: $REPORT_DIR"
+say "modelos: ${MODELS[*]}"
+say "limites: easy=$(case_timeout easy)s medium=$(case_timeout medium)s deep=$(case_timeout deep)s"
+
+for model in "${MODELS[@]}"; do
+  model="${model//[[:space:]]/}"
+  [[ -n "$model" ]] || continue
+  stop_model=0
+  for level in easy medium deep; do
+    if (( stop_model )); then
+      printf '%s\t%s\t%s\t0\tskipped\tSKIP\t-\n' "$model" "$level" "$(case_timeout "$level")" >>"$SUMMARY"
+      say "$model/$level: SKIP (modelo excedeu limite anterior)"
+      continue
+    fi
+    timeout_s="$(case_timeout "$level")"
+    safe_model="${model//[^A-Za-z0-9._-]/-}"
+    repo="alt-claude-bench-${safe_model}-${level}"
+    dir="$REPORT_DIR/${safe_model}-${level}"
+    mkdir -p "$dir"
+    say "$model/$level: preparando fixture"
+    prepare_repo "$repo" "$level" >"$dir/repo-create.txt" 2>&1
+    args="$(case_args "$repo" "$model" "$level")"
+    start_epoch=$(date +%s)
+    mcp_call task_submit "$args" "$dir/task-submit.txt"
+    task_id=$(extract_structured "$dir/task-submit.txt" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("task_id",""))')
+    if [[ -z "$task_id" ]]; then
+      printf '%s\t%s\t%s\t0\tsubmit-error\tFAIL\t-\n' "$model" "$level" "$timeout_s" >>"$SUMMARY"
+      say "$model/$level: FAIL no submit"
+      continue
+    fi
+    printf '%s\n' "$task_id" >"$dir/task-id.txt"
+    say "$model/$level: task=$task_id timeout=${timeout_s}s"
+    final_status=unknown
+    result=FAIL
+    while :; do
+      a=$(python3 -c 'import json,sys; print(json.dumps({"task_id":sys.argv[1]}))' "$task_id")
+      mcp_call task_status "$a" "$dir/task-status-latest.txt" || true
+      final_status=$(extract_structured "$dir/task-status-latest.txt" 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin).get("status","unknown"))' 2>/dev/null || echo unknown)
+      elapsed=$(( $(date +%s) - start_epoch ))
+      say "$model/$level: status=$final_status elapsed=${elapsed}s/${timeout_s}s"
+      case "$final_status" in
+        succeeded) result=PASS; break ;;
+        failed|canceled) result=FAIL; break ;;
+      esac
+      if (( elapsed >= timeout_s )); then
+        say "$model/$level: TIMEOUT; cancelando tarefa"
+        mcp_call task_cancel "$a" "$dir/task-cancel.txt" || true
+        final_status=timeout
+        result=TIMEOUT
+        stop_model=1
+        break
+      fi
+      sleep "$POLL_SECONDS"
+    done
+    elapsed=$(( $(date +%s) - start_epoch ))
+    a=$(python3 -c 'import json,sys; print(json.dumps({"task_id":sys.argv[1],"max_chars":30000}))' "$task_id")
+    mcp_call task_logs "$a" "$dir/task-logs.txt" || true
+    a=$(python3 -c 'import json,sys; print(json.dumps({"task_id":sys.argv[1],"max_chars":60000}))' "$task_id")
+    mcp_call task_diff "$a" "$dir/task-diff.txt" || true
+    collect_remote_artifacts "$task_id" "$dir"
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$model" "$level" "$timeout_s" "$elapsed" "$final_status" "$result" "$task_id" >>"$SUMMARY"
+    say "$model/$level: $result em ${elapsed}s"
+  done
+done
+
+say "concluído"
+cat "$SUMMARY"
+printf '\n[benchmark] publique este diretório com:\n  bash diagnostics/publish-report.sh %q\n' "$REPORT_DIR"
