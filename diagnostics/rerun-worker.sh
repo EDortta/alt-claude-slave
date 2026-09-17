@@ -41,13 +41,30 @@ printf '[rerun] sincronizando código no container...\n'
 ssh -T -o BatchMode=yes -o ConnectTimeout=10 "$DOM1_SSH_TARGET" \
   "sudo -n incus exec '$CONTAINER_NAME' -- runuser -u slave -- bash -lc 'cd \"$REMOTE_REPO\" && git fetch origin && git checkout \"$BRANCH\" && git reset --hard \"origin/$BRANCH\"'"
 
-printf '[rerun] aplicando compatibilidade do llama-cli e limite de 512 tokens...\n'
+printf '[rerun] garantindo runner batch llama-completion...\n'
+ssh -T -o BatchMode=yes -o ConnectTimeout=10 "$DOM1_SSH_TARGET" \
+  "sudo -n incus exec '$CONTAINER_NAME' -- runuser -u slave -- bash -lc '
+    set -e
+    BIN=/home/slave/.local/opt/llama.cpp/bin
+    SRC=/home/slave/.local/src/llama.cpp
+    if [ ! -x \"\$BIN/llama-completion\" ]; then
+      echo \"[rerun/remote] compilando llama-completion...\"
+      cmake --build \"\$SRC/build\" --target llama-completion -j \"\$(nproc)\"
+      install -m 0755 \"\$SRC/build/bin/llama-completion\" \"\$BIN/llama-completion\"
+    fi
+    \"\$BIN/llama-completion\" --version
+  '"
+
+printf '[rerun] configurando worker para execução batch não interativa...\n'
 ssh -T -o BatchMode=yes -o ConnectTimeout=10 "$DOM1_SSH_TARGET" \
   "sudo -n incus exec '$CONTAINER_NAME' -- runuser -u slave -- python3 - '$REMOTE_REPO/scripts/slave_worker.py'" <<'PY'
 from pathlib import Path
 import sys
 p = Path(sys.argv[1])
 s = p.read_text(encoding='utf-8')
+s = s.replace('llama_cli = LLAMA_BIN / "llama-cli"', 'llama_cli = LLAMA_BIN / "llama-completion"')
+s = s.replace('llama-cli nao encontrado', 'llama-completion nao encontrado')
+s = s.replace('llama-cli terminou com codigo', 'llama-completion terminou com codigo')
 for line in (
     '                "--conversation",\n',
     '                "--single-turn",\n',
@@ -59,5 +76,5 @@ s = s.replace('                "-n", "3072",\n', '                "-n", "512",\n
 p.write_text(s, encoding='utf-8')
 PY
 
-printf '[rerun] executando benchmark com timeout por nível...\n'
+printf '[rerun] executando benchmark batch com timeout por nível...\n'
 exec bash "$ROOT/diagnostics/benchmark-ladder.sh" "$@"
