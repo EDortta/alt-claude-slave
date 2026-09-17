@@ -18,11 +18,6 @@ printf 'model\tcontext\tmax_tokens\ttimeout_s\telapsed_s\trc\tresult\n' >"$SUMMA
 
 say(){ printf '[lowlevel] %s\n' "$*"; }
 
-remote_python() {
-  ssh -T -o BatchMode=yes -o ConnectTimeout=10 "$DOM1_SSH_TARGET" \
-    "sudo -n incus exec '$CONTAINER_NAME' -- runuser -u slave -- python3 - $*"
-}
-
 IFS=',' read -r -a MODELS <<< "$MODELS_CSV"
 for model in "${MODELS[@]}"; do
   model="${model//[[:space:]]/}"
@@ -49,7 +44,7 @@ for model in "${MODELS[@]}"; do
           timeout --signal=TERM --kill-after=5 ${TIMEOUT_SECONDS}s \
           \"$LLAMA_BIN/llama-completion\" \
           -hf \"\$REPO:\$QUANT\" \
-          -c $CTX -t $THREADS -n $tokens --temp 0 \
+          -c $CTX -t $THREADS -n $tokens --temp 0 -no-cnv \
           -p \"Return exactly the word OK\" \
           >\"\$OUT\" 2>\"\$ERR\"
         RC=\$?
