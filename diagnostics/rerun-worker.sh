@@ -72,6 +72,8 @@ for line in (
     '                "--no-display-prompt",\n',
 ):
     s = s.replace(line, '')
+if '                "-no-cnv",\n' not in s:
+    s = s.replace('                "--temp", "0",\n', '                "--temp", "0",\n                "-no-cnv",\n')
 s = s.replace('                "-n", "3072",\n', '                "-n", "512",\n')
 p.write_text(s, encoding='utf-8')
 PY
