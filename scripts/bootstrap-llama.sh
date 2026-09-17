@@ -27,7 +27,7 @@ cmake -S "$SRC_DIR" -B "$SRC_DIR/build" \
 cmake --build "$SRC_DIR/build" --config Release -j "$(nproc)"
 
 mkdir -p "$INSTALL_DIR/bin"
-for binary in llama-cli llama-server llama-bench; do
+for binary in llama-cli llama-completion llama-server llama-bench; do
   install -m 0755 "$SRC_DIR/build/bin/$binary" "$INSTALL_DIR/bin/$binary"
 done
 
