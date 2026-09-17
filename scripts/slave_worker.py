@@ -86,9 +86,7 @@ def collect_sources(worktree: Path, allowed_files: list[str]) -> str:
 def build_prompt(task: dict[str, Any], sources: str) -> str:
     allowed = "\n".join(f"- {item}" for item in task["allowed_files"])
     tests = "\n".join(f"- {item}" for item in task["test_commands"]) or "- nenhum comando informado"
-    return f"""Voce e um implementador de software trabalhando sob contrato estrito.
-
-OBJETIVO
+    user_prompt = f"""OBJETIVO
 {task['objective']}
 
 ARQUIVOS QUE PODEM SER ALTERADOS
@@ -105,8 +103,17 @@ REGRAS OBRIGATORIAS
 5. Se nao for possivel cumprir, responda exatamente IMPOSSIVEL seguido de uma frase curta.
 
 CONTEUDO ATUAL
-{sources}
-"""
+{sources}"""
+    system_prompt = "Voce e um implementador de software trabalhando sob contrato estrito. Obedeca literalmente ao formato de saida solicitado."
+    return (
+        "<|im_start|>system\n"
+        + system_prompt
+        + "<|im_end|>\n"
+        + "<|im_start|>user\n"
+        + user_prompt
+        + "<|im_end|>\n"
+        + "<|im_start|>assistant\n"
+    )
 
 
 def extract_patch(output: str) -> str:
@@ -117,6 +124,9 @@ def extract_patch(output: str) -> str:
     fence = re.search(r"(?m)^```\s*$", patch)
     if fence:
         patch = patch[:fence.start()]
+    end_token = patch.find("<|im_end|>")
+    if end_token >= 0:
+        patch = patch[:end_token]
     return patch.rstrip() + "\n"
 
 
@@ -158,9 +168,9 @@ def main(task_id: str) -> int:
         repository = validate_repository(task["repository"])
         worktree = Path(task["worktree"])
         model = get_model(task["model"])
-        llama_cli = LLAMA_BIN / "llama-cli"
+        llama_cli = LLAMA_BIN / "llama-completion"
         if not llama_cli.is_file():
-            raise RuntimeError(f"llama-cli nao encontrado: {llama_cli}")
+            raise RuntimeError(f"llama-completion nao encontrado: {llama_cli}")
         if worktree.exists():
             raise RuntimeError(f"worktree ja existe: {worktree}")
 
@@ -171,19 +181,16 @@ def main(task_id: str) -> int:
         prompt_file = STATE_DIR / "tasks" / f"{task_id}.prompt"
         prompt_file.write_text(prompt, encoding="utf-8")
 
-        log(f"Executando modelo {model['id']}")
+        log(f"Executando modelo {model['id']} em batch ChatML")
         model_result = subprocess.run(
             [
                 str(llama_cli),
                 "-hf", f"{model['repository']}:{model['quant']}",
                 "-c", str(model["context"]),
                 "-t", str(min(model["threads"], os.cpu_count() or model["threads"])),
-                "-n", "3072",
+                "-n", "512",
                 "--temp", "0",
-                "--conversation",
-                "--single-turn",
-                "--jinja",
-                "--no-display-prompt",
+                "-no-cnv",
                 "-f", str(prompt_file),
             ],
             cwd=worktree,
@@ -194,7 +201,7 @@ def main(task_id: str) -> int:
         raw_file = STATE_DIR / "tasks" / f"{task_id}.model-output.txt"
         raw_file.write_text(model_result.stdout + "\n--- STDERR ---\n" + model_result.stderr, encoding="utf-8")
         if model_result.returncode != 0:
-            raise RuntimeError(f"llama-cli terminou com codigo {model_result.returncode}")
+            raise RuntimeError(f"llama-completion terminou com codigo {model_result.returncode}")
 
         patch = extract_patch(model_result.stdout)
         candidate = STATE_DIR / "tasks" / f"{task_id}.candidate.diff"
