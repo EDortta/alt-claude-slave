@@ -11,6 +11,7 @@ printf '[rerun] limpando apenas tarefas antigas de diagnóstico...\n'
 ssh -T -o BatchMode=yes -o ConnectTimeout=10 "$DOM1_SSH_TARGET" \
   "sudo -n incus exec '$CONTAINER_NAME' -- runuser -u slave -- python3 -" <<'PY'
 import json, os, signal
+from datetime import datetime, timezone
 from pathlib import Path
 
 tasks = Path('/srv/alt-claude/state/tasks')
@@ -34,6 +35,7 @@ for path in tasks.glob('*.json'):
             pass
     task['status'] = 'canceled'
     task['error'] = 'canceled by diagnostic rerun cleanup'
+    task['updated_at'] = datetime.now(timezone.utc).isoformat()
     path.write_text(json.dumps(task, ensure_ascii=False, indent=2, sort_keys=True) + '\n', encoding='utf-8')
 PY
 
@@ -55,28 +57,6 @@ ssh -T -o BatchMode=yes -o ConnectTimeout=10 "$DOM1_SSH_TARGET" \
     \"\$BIN/llama-completion\" --version
   '"
 
-printf '[rerun] configurando worker para execução batch não interativa...\n'
-ssh -T -o BatchMode=yes -o ConnectTimeout=10 "$DOM1_SSH_TARGET" \
-  "sudo -n incus exec '$CONTAINER_NAME' -- runuser -u slave -- python3 - '$REMOTE_REPO/scripts/slave_worker.py'" <<'PY'
-from pathlib import Path
-import sys
-p = Path(sys.argv[1])
-s = p.read_text(encoding='utf-8')
-s = s.replace('llama_cli = LLAMA_BIN / "llama-cli"', 'llama_cli = LLAMA_BIN / "llama-completion"')
-s = s.replace('llama-cli nao encontrado', 'llama-completion nao encontrado')
-s = s.replace('llama-cli terminou com codigo', 'llama-completion terminou com codigo')
-for line in (
-    '                "--conversation",\n',
-    '                "--single-turn",\n',
-    '                "--jinja",\n',
-    '                "--no-display-prompt",\n',
-):
-    s = s.replace(line, '')
-if '                "-no-cnv",\n' not in s:
-    s = s.replace('                "--temp", "0",\n', '                "--temp", "0",\n                "-no-cnv",\n')
-s = s.replace('                "-n", "3072",\n', '                "-n", "512",\n')
-p.write_text(s, encoding='utf-8')
-PY
-
-printf '[rerun] executando benchmark batch com timeout por nível...\n'
+printf '[rerun] worker usa llama-completion + ChatML + -no-cnv permanentemente no código.\n'
+printf '[rerun] executando benchmark...\n'
 exec bash "$ROOT/diagnostics/benchmark-ladder.sh" "$@"
