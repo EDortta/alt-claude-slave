@@ -1,0 +1,2 @@
+model	level	max_tokens	timeout_s	elapsed_s	status	result	task_id
+qwen-coder-1.5b	easy	96	300	98	succeeded	PASS	20260917T203127Z-e47b39e4
