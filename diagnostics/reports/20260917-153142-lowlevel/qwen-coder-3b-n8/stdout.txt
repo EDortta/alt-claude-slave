@@ -1,0 +1,2 @@
+Return exactly the word OK, without any additional characters or spaces.
+

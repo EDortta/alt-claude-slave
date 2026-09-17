@@ -1,0 +1,1 @@
+Return exactly the word OK, without any additional characters or spaces. This is a simple task to ensure clarity and correctness in communication. The word OK is

@@ -1,0 +1,6 @@
+Command exited with non-zero status 124
+WALL=90.04
+USER=512.76
+SYS=3.10
+MAXRSS_KB=2168340
+RC=124

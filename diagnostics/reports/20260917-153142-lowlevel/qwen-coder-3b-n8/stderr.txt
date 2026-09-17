@@ -1,0 +1,24 @@
+0.00.518.846 I llama_completion: llama backend init
+0.00.518.870 I llama_completion: load the model and apply lora adapter, if any
+0.01.479.491 W load: control-looking token: 128247 '</s>' was not control-type; this is probably a bug in the model. its type will be overridden
+0.01.795.635 I cmn          init: llama threadpool init, n_threads = 12
+0.05.009.089 I 
+0.05.009.833 I system_info: n_threads = 12 (n_threads_batch = 12) / 12 | CPU : SSE3 = 1 | SSSE3 = 1 | LLAMAFILE = 1 | OPENMP = 1 | REPACK = 1 | 
+0.05.009.838 I 
+0.05.014.024 I sampler seed: 3307220932
+0.05.014.069 I sampler params: 
+	repeat_last_n = 64, repeat_penalty = 1.000, frequency_penalty = 0.000, presence_penalty = 0.000
+	dry_multiplier = 0.000, dry_base = 1.750, dry_allowed_length = 2, dry_penalty_last_n = 64
+	top_k = 40, top_p = 0.950, min_p = 0.050, xtc_probability = 0.000, xtc_threshold = 0.100, typical_p = 1.000, top_n_sigma = -1.000, temp = 0.000
+	mirostat = 0, mirostat_lr = 0.100, mirostat_ent = 5.000, adaptive_target = -1.000, adaptive_decay = 0.900
+0.05.014.087 I sampler chain: logits -> ?penalties -> ?dry -> ?top-n-sigma -> top-k -> ?typical -> top-p -> min-p -> ?xtc -> temp-ext -> dist 
+0.05.014.089 I generate: n_ctx = 512, n_batch = 2048, n_predict = 8, n_keep = 0
+0.05.014.089 I 
+0.31.754.755 I common_perf_print:    sampling time =      13.17 ms
+0.31.754.762 I common_perf_print:    samplers time =       2.21 ms /    13 tokens
+0.31.754.770 I common_perf_print:        load time =    3693.76 ms
+0.31.754.772 I common_perf_print: prompt eval time =    3955.04 ms /     5 tokens (  791.01 ms per token,     1.26 tokens per second)
+0.31.754.775 I common_perf_print:        eval time =   22768.62 ms /     7 runs   ( 3252.66 ms per token,     0.31 tokens per second)
+0.31.754.777 I common_perf_print:       total time =   26745.71 ms /    12 tokens
+0.31.754.778 I common_perf_print: unaccounted time =       8.87 ms /   0.0 %      (total - sampling - prompt eval - eval) / (total)
+0.31.754.779 I common_perf_print:    graphs reused =          6

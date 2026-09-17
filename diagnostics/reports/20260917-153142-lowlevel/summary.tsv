@@ -1,0 +1,7 @@
+model	context	max_tokens	timeout_s	elapsed_s	rc	result
+qwen-coder-1.5b	512	1	90	9	0	PASS
+qwen-coder-1.5b	512	8	90	23	0	PASS
+qwen-coder-1.5b	512	32	90	23	0	PASS
+qwen-coder-3b	512	1	90	10	0	PASS
+qwen-coder-3b	512	8	90	33	0	PASS
+qwen-coder-3b	512	32	90	91	124	TIMEOUT
