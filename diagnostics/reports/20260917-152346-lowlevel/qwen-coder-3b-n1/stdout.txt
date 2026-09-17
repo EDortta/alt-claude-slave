@@ -1,0 +1,5 @@
+user
+Return exactly the word OK
+assistant
+OK
+> 
