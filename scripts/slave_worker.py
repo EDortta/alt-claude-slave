@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""One-task worker: ask the local model for a constrained patch, apply, and test."""
+"""One-task worker: ask the local model for constrained file contents, validate, diff, and test."""
 
 from __future__ import annotations
 
@@ -95,11 +95,17 @@ ARQUIVOS QUE PODEM SER ALTERADOS
 TESTES QUE SERAO EXECUTADOS
 {tests}
 
+FORMATO DE SAIDA OBRIGATORIO
+Para cada arquivo alterado, devolva o CONTEUDO FINAL COMPLETO neste formato:
+<<<FILE caminho/do/arquivo>>>
+conteudo final completo
+<<<END FILE>>>
+
 REGRAS OBRIGATORIAS
 1. Nao altere arquitetura nem arquivos fora da lista.
-2. Responda somente com um unified diff valido para git apply.
-3. O diff deve usar caminhos a/arquivo e b/arquivo e comecar com diff --git.
-4. Nao use cercas Markdown, explicacoes ou comandos de shell.
+2. Nao gere unified diff; o executor vai gerar o diff com git.
+3. Nao use cercas Markdown, explicacoes ou comandos de shell.
+4. Use somente blocos <<<FILE ...>>> / <<<END FILE>>> para arquivos alterados.
 5. Se nao for possivel cumprir, responda exatamente IMPOSSIVEL seguido de uma frase curta.
 
 CONTEUDO ATUAL
@@ -116,18 +122,51 @@ CONTEUDO ATUAL
     )
 
 
-def extract_patch(output: str) -> str:
-    match = re.search(r"(?m)^diff --git ", output)
-    if not match:
-        raise RuntimeError("o modelo nao produziu um unified diff")
-    patch = output[match.start():]
-    fence = re.search(r"(?m)^```\s*$", patch)
-    if fence:
-        patch = patch[:fence.start()]
-    end_token = patch.find("<|im_end|>")
+def generated_suffix(output: str) -> str:
+    matches = list(re.finditer(r"(?m)^assistant\s*", output))
+    if matches:
+        value = output[matches[-1].end():]
+    else:
+        value = output
+    end_token = value.find("<|im_end|>")
     if end_token >= 0:
-        patch = patch[:end_token]
-    return patch.rstrip() + "\n"
+        value = value[:end_token]
+    end_text = value.find("[end of text]")
+    if end_text >= 0:
+        value = value[:end_text]
+    return value.strip()
+
+
+def extract_files(output: str, allowed_files: list[str]) -> dict[str, str]:
+    value = generated_suffix(output)
+    if value.startswith("IMPOSSIVEL"):
+        raise RuntimeError(value.splitlines()[0][:300])
+    pattern = re.compile(r"(?ms)^<<<FILE ([^>\n]+)>>\>\s*\n(.*?)^<<<END FILE>>>\s*$")
+    matches = pattern.findall(value)
+    if not matches:
+        raise RuntimeError("o modelo nao produziu blocos FILE validos")
+    allowed = set(allowed_files)
+    result: dict[str, str] = {}
+    for relative, content in matches:
+        relative = relative.strip()
+        if relative not in allowed:
+            raise RuntimeError(f"modelo tentou escrever arquivo proibido: {relative}")
+        if relative in result:
+            raise RuntimeError(f"modelo repetiu arquivo na saida: {relative}")
+        result[relative] = content
+    return result
+
+
+def ensure_safe_target(worktree: Path, relative: str) -> Path:
+    path = worktree / relative
+    current = worktree
+    for part in Path(relative).parts[:-1]:
+        current = current / part
+        if current.is_symlink():
+            raise RuntimeError(f"caminho permitido passa por link simbolico: {relative}")
+    if path.is_symlink():
+        raise RuntimeError(f"arquivo permitido e link simbolico: {relative}")
+    return path
 
 
 def staged_files(worktree: Path) -> set[str]:
@@ -203,11 +242,11 @@ def main(task_id: str) -> int:
         if model_result.returncode != 0:
             raise RuntimeError(f"llama-completion terminou com codigo {model_result.returncode}")
 
-        patch = extract_patch(model_result.stdout)
-        candidate = STATE_DIR / "tasks" / f"{task_id}.candidate.diff"
-        candidate.write_text(patch, encoding="utf-8")
-        run(["git", "apply", "--check", str(candidate)], cwd=worktree)
-        run(["git", "apply", str(candidate)], cwd=worktree)
+        generated_files = extract_files(model_result.stdout, task["allowed_files"])
+        for relative, content in generated_files.items():
+            target = ensure_safe_target(worktree, relative)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(content, encoding="utf-8")
         run(["git", "add", "--all"], cwd=worktree)
 
         changed = staged_files(worktree)
@@ -216,7 +255,7 @@ def main(task_id: str) -> int:
             raise RuntimeError("modelo tentou alterar arquivos proibidos: " + ", ".join(sorted(forbidden)))
         reject_symlinks(worktree, changed)
         if not changed:
-            raise RuntimeError("o patch nao produziu alteracoes")
+            raise RuntimeError("a saida do modelo nao produziu alteracoes")
 
         for command in task["test_commands"]:
             log(f"Teste: {command}")
