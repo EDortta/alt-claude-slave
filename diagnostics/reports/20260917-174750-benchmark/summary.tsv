@@ -1,0 +1,2 @@
+model	level	max_tokens	timeout_s	elapsed_s	status	result	task_id
+qwen-coder-1.5b	medium	192	600	195	succeeded	PASS	20260917T204753Z-f8b045d0
